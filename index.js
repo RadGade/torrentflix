@@ -12,7 +12,7 @@ let connections = []
 
 var port = process.env.PORT || 4200
 
-server.listen(port, () => {
+app.listen(port, () => {
 	console.log(`launched on port ${port} 🚀`);
 })
 
