@@ -1,156 +1,90 @@
-#!/usr/bin/env node
-
-var torrentStream = require('torrent-stream');
-var express = require('express');
-var request = require('request').defaults({encoding: null});
-var app = express();
+const express = require('express')
+const torrentStream = require('torrent-stream')
+const bodyParser = require('body-parser');
+const {  getmagLink, search, listmovie,} = require('./scrapper/scrapper.js')
+const app = express()
 var server = require('http').Server(app);
-var io = require('socket.io')(server);
+var socket = require('socket.io')
+var ss = require('socket.io-stream');
+var io = socket(server)
 var os = require('os');
-var del = require('del');
-var mime = require('mime');
-var archiver = require('archiver');
-
-var client, url;
-
 var DIR = os.tmpdir()+'/torrent-web-poc';
-var PORT = parseArg('--port') || parseArg('-p') || process.env.PORT || 80;
+let connections = []
 
-server.listen(PORT);
-app.use(express.static(__dirname + '/public'));
-console.log('Torrent Web started on port '+PORT+' ...');
-
-//===============================
-// API
-//===============================
-
-io.on('connection', function (socket) {
-	console.log('New socket connection.');
-	if (client && client.files.length) socket.emit('torrent', torrentRepresentation());
-	else socket.emit('no-torrent');
+io.on('connection', (socket) => {
+	connections.push(socket)
+	console.log('connected: %s sockets connected', connections.length)
 	socket.on('add-torrent', addTorrent);
-	socket.on('remove-torrent', removeTorrent);
-});
+	//disconect
+	socket.on('watch', addTorrent)
+})
 
-app.get('/torrent/:filename', function(req, res) {
-	console.log('Torrent file request.');
-	var file = findFile(req.params.filename);
-	if (file) {
-		var stream = file.createReadStream();
-		res.set('Content-Type', mime.lookup(file.name));
-		res.set('Content-Length', file.length);
-		stream.pipe(res);
-	}
-	else res.status(404).end();
-});
 
-app.get('/torrent/', function(req, res) {
-	var archive = archiver.create('zip', {});
-	var filename = client.torrent.name + '.zip';
-	res.set('Content-Type', 'application/zip');
-	res.set('Content-disposition', 'attachment; filename=' + filename);
-	archive.pipe(res);
-	client.files.forEach(function(file) {
-		archive.append(file.createReadStream(), {name: file.path});
-	});
-	archive.finalize();
-});
 
-//===============================
-// Main functions
-//===============================
 
-function findFile(filename) {
-	var f = null;
-	client.files.forEach(function(file) {
-		if (file.name === filename) f = file;
-	});
-	return f;
-}
+var port = process.env.PORT || 4200
+
+server.listen(port, () => {
+	console.log(`launched on port ${port} 🚀`);
+})
+
+
+app.use(bodyParser.json())
+
+app.get('/', async (req, res) => {
+	 const data = await listmovie()
+	res.json(data)
+})
+
+app.get('/search/:query', async (req, res) => {
+	var query = req.params.query
+	const data = await search(query)
+	res.json(data)
+})
+
+
+app.get('/watch/:link', async (req, res) => {
+
+	var link = req.params.link
+	const magLink = await getmagLink(link)
+	console.log(magLink)
+	var engine = torrentStream(magLink, {
+		 uploads: 3,
+		 connections: 30,
+		 path: DIR
+	 })
+	engine.on('ready', () => {
+	 engine.files.forEach(async (file) => {
+		 if (file.name.endsWith('.mp4')) {
+			 console.log('filename:', file.name);
+			 var stream = file.createReadStream()
+			 res.writeHead(200, {'Content-Type' : 'video/mp4'})
+			 stream.pipe(res);
+		 }
+	 })
+	})
+})
+
 
 function addTorrent(incoming) {
-	removeTorrent();
-	url = incoming;
-	if (url.indexOf('magnet:') === 0) createTorrentEngine(url);
-	else {
-		request.get(url, function(err, res, body) {
-			createTorrentEngine(body);
-		});
-	}
+	var magLink = incoming
+try {
+	var engine = torrentStream(magLink, {
+		 uploads: 3,
+		 connections: 30,
+		 path: DIR
+	 })
+	engine.on('ready', () => {
+	 engine.files.forEach(async (file) => {
+		 if (file.name.endsWith('.mp4')) {
+			 console.log('filename:', file.name);
+			 var stream = file.createReadStream()
+			 res.writeHead(200, {'Content-Type' : 'video/mp4'})
+			 stream.pipe(res);
+		 }
+	 })
+	})
+} catch (e) {
+	console.log(e);
 }
-
-function removeTorrent() {
-	if (client) {
-		console.log('Destroying client.');
-		client.destroy();
-		client = null;
-
-		io.emit('torrent-removed');
-	}
-	deleteFiles();
-}
-
-//===============================
-// Helper functions
-//===============================
-
-/**
- * Checks process.argv for one beginning with arg+'='
- * @param {string} arg
- */
-function parseArg(arg) {
-	for (var i = 0; i < process.argv.length; i++) {
-		var val = process.argv[i];
-		if (startsWith(val, arg+'=')) return val.substring(arg.length+1);
-	}
-	function startsWith(string, beginsWith) {
-		return string.indexOf(beginsWith) === 0;
-	}
-}
-
-function deleteFiles() {
-	setTimeout(function() {
-		del.sync(DIR+'/**', {force: true});
-	}, 1000)
-}
-
-function createTorrentEngine(torrent) {
-	try {
-		client = torrentStream(torrent, {
-			uploads: 3,
-			connections: 30,
-			path: DIR
-		});
-		client.ready(torrentReady);
-	}
-
-	catch(e) {
-		console.log('Error creating torrent', e);
-		io.emit('bad-torrent');
-	}
-}
-
-function torrentReady() {
-	io.emit('torrent', torrentRepresentation());
-	console.log('client:', client);
-}
-
-function simplifyFilesArray(files) {
-	return files.map(function(file) {
-		return {
-			name: file.name,
-			path: file.path,
-			length: file.length
-		};
-	});
-}
-
-function torrentRepresentation() {
-	return {
-		url: url,
-		name: client.torrent.name,
-		comment: client.torrent.comment,
-		infoHash: client.infoHash,
-		files: simplifyFilesArray(client.files)
-	};
 }
