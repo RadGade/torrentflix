@@ -4,23 +4,15 @@
   "main": "index.js",
   "license": "MIT",
   "scripts": {
-    "start": "nodemon index.js",
-    "postinstall": "webpack"
+    "start": "nodemon index.js"
   },
   "dependencies": {
-    "archiver": "^3.1.1",
     "body-parser": "^1.19.0",
     "cheerio": "^1.0.0-rc.3",
-    "del": "^5.1.0",
     "express": "^4.17.1",
-    "http": "^0.0.0",
-    "mime": "^2.4.4",
     "node-fetch": "^2.6.0",
-    "request": "^2.88.0",
-    "shelljs": "^0.8.3",
     "socket.io": "^2.3.0",
     "socket.io-stream": "^0.9.1",
-    "style-loader": "^1.1.2",
     "torrent-parser": "^1.2.0",
     "torrent-stream": "^1.2.0"
   },
