@@ -3,7 +3,6 @@ const torrentStream = require('torrent-stream')
 const bodyParser = require('body-parser');
 const {  getmagLink, search, listmovie,} = require('./scrapper/scrapper.js')
 const app = express()
-var server = require('http').Server(app);
 var socket = require('socket.io')
 var ss = require('socket.io-stream');
 var io = socket(server)
