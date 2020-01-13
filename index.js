@@ -32,23 +32,26 @@ app.get('/search/:query', async (req, res) => {
 
 
 app.get('/watch/:link', async (req, res) => {
-
-	var link = req.params.link
-	const magLink = await getmagLink(link)
-	console.log(magLink)
-	var engine = torrentStream(magLink, {
-		 uploads: 3,
-		 connections: 30,
-		 path: DIR
-	 })
-	engine.on('ready', () => {
-	 engine.files.forEach(async (file) => {
-		 if (file.name.endsWith('.mp4')) {
-			 console.log('filename:', file.name);
-			 var stream = file.createReadStream()
-			 res.writeHead(200, {'Content-Type' : 'video/mp4'})
-			 stream.pipe(res);
-		 }
-	 })
-	})
+	try {
+		var link = req.params.link
+		const magLink = await getmagLink(link)
+		console.log(magLink)
+		var engine = torrentStream(magLink, {
+			 uploads: 3,
+			 connections: 30,
+			 path: DIR
+		 })
+		engine.on('ready', () => {
+		 engine.files.forEach(async (file) => {
+			 if (file.name.endsWith('.mp4')) {
+				 console.log('filename:', file.name);
+				 var stream = file.createReadStream()
+				 res.writeHead(200, {'Content-Type' : 'video/mp4'})
+				 stream.pipe(res);
+			 }
+		 })
+		})
+	} catch (e) {
+		console.log(e);
+	}
 })
